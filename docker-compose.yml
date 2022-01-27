@@ -1,0 +1,104 @@
+version: "3"
+services:
+  gatewaysr:
+    build:
+      context: ./
+      dockerfile: ./GatewayService/Dockerfile
+    ports:
+      - "8080:8080"
+    networks:
+      consulnet:
+        ipv4_address: 172.25.0.2
+    dns:
+      - 172.25.0.5
+    volumes:
+      - app-log-vol:/var/log/applogs/
+#      - ./GatewayService/resolv.conf:/etc/resolv.conf:rw
+      - ./:/Proj
+    environment:
+      - DATADOG_HOST=datadog # used by the web app to initialize the Datadog library
+      - DD_AGENT_HOST=datadog
+      - DD_TRACE_AGENT_PORT=8126
+      # Taggin section for tracing
+      - DD_ENV=test
+      - DD_SERVICE=gatewaysr
+      - DD_VERSION=1
+      # Pass Consul Info
+      - CONSUL_HOST=consul
+      # Service ENV Vars
+      - SERVICE_NAME=gatewaysr
+      - SERVICE_PORT=8080
+      # Log
+      - LOG_FILE=/var/log/applogs/applogs.log
+  drivers:
+    build:
+      context: ./
+      dockerfile: ./DriverService/Dockerfile
+    ports:
+      - "8081:8081"
+    networks:
+      consulnet:
+        ipv4_address: 172.25.0.3
+    volumes:
+      - app-log-vol:/var/log/applogs/
+      - ./:/Proj
+    environment:
+      - DATADOG_HOST=datadog # used by the web app to initialize the Datadog library
+      - DD_AGENT_HOST=datadog
+      - DD_TRACE_AGENT_PORT=8126
+      # Taggin section for tracing
+      - DD_ENV=test
+      - DD_SERVICE=drivers
+      - DD_VERSION=1
+      # Pass Consul Info
+      - CONSUL_HOST=consul
+      # Service ENV Vars
+      - SERVICE_NAME=drivers
+      - SERVICE_PORT=8081
+      # Log
+      - LOG_FILE=/var/log/applogs/applogs.log
+  consul:
+    build:
+      context: ./
+      dockerfile: ./consul/DockerFile
+#    links:
+#      - drivers
+    networks:
+      consulnet:
+        ipv4_address: 172.25.0.5
+    ports:
+      - 8500:8500
+      - 8600:8600
+      - 8300:8300
+    command:  agent -server -bind 0.0.0.0 -client 0.0.0.0 -bootstrap-expect 1 -config-file=/consul/config/config.json
+    volumes:
+      - ./consul/conf/consulconf.json:/consul/config/config.json
+      - ./consul/data:/consul/data
+    environment:
+      - CONSUL_LOCAL_CONFIG={"addresses":{"dns":"0.0.0.0","http":"0.0.0.0"}}
+  # Monitoring agent section
+  datadog:
+    image: gcr.io/datadoghq/agent:latest
+    networks:
+      consulnet:
+        ipv4_address: 172.25.0.4
+    environment:
+      - DD_API_KEY=d5622525f166e2e92f38e0578c65d567
+      - DD_APM_ENABLED=true
+      - DD_APM_NON_LOCAL_TRAFFIC=true
+      - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
+      - DD_DOGSTATSD_DISABLE=false
+      - DD_SITE=datadoghq.eu
+      - DD_LOGS_ENABLED=true
+      - DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL=true
+      #- DD_CONTAINER_EXCLUDE_LOGS="name:datadog-agent"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /proc/:/host/proc/:ro
+      - /sys/fs/cgroup:/host/sys/fs/cgroup:ro
+      - app-log-vol:/var/log/applogs/
+volumes:
+  app-log-vol:
+networks:
+  consulnet:
+    external: true
